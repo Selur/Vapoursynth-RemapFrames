@@ -1,19 +1,14 @@
 #include "Common.h"
 
 struct ReplaceData {
-	VSNodeRef *node1;
-	VSNodeRef *node2;
+	VSNode *node1;
+	VSNode *node2;
 	VSVideoInfo vi;
 	std::vector<unsigned int> frameMap;
 };
 
-static void VS_CC replaceInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-	ReplaceData *d{ static_cast<ReplaceData*>(*instanceData) };
-	vsapi->setVideoInfo(&d->vi, 1, node);
-}
-
-static const VSFrameRef *VS_CC replaceGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-	ReplaceData *d{ static_cast<ReplaceData*>(*instanceData) };
+static const VSFrame *VS_CC replaceGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+	ReplaceData *d{ static_cast<ReplaceData*>(instanceData) };
 
 	if (activationReason == arInitial) {
 		//Check whether frameMap returns 0 or 1 for the current frame and return the corresponding clip.
@@ -40,20 +35,20 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 
 	if (!file) {
 		skipWhitespace(name, col);
-		if (col == name.size())
+		if (col == static_cast<int>(name.size()))
 			return;
 	}
 
 	std::string temp;
 	while (file ? std::getline(*static_cast<std::ifstream*>(stream), temp) : std::getline(*static_cast<std::stringstream*>(stream), temp)) {
 		col = 0;
-		while (col < temp.size()) {
+		while (col < static_cast<int>(temp.size())) {
 			skipWhitespace(temp, col);
 			char ch{ getChar(temp, col) };
 			if (ch != 0) {
 				if (ch == '#')
-					continue;
-				else if (std::isdigit(ch) || ch == '-')
+					break;
+				else if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '-')
 					frameMap[getInt(temp, col, line, file, maxFrames, Filter::REPLACE_FRAMES_SIMPLE)] = 1;
 				else if (ch == '[') {
 					++col;
@@ -76,32 +71,32 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 
 void VS_CC replaceCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
 	ReplaceData d;
-	d.node1 = vsapi->propGetNode(in, "baseclip", 0, 0);
-	d.node2 = vsapi->propGetNode(in, "sourceclip", 0, 0);
+	d.node1 = vsapi->mapGetNode(in, "baseclip", 0, 0);
+	d.node2 = vsapi->mapGetNode(in, "sourceclip", 0, 0);
 	d.vi = *vsapi->getVideoInfo(d.node1);
 	int err;
 
 	std::string filename;
-	const char* fn{ vsapi->propGetData(in, "filename", 0, &err) };
+	const char* fn{ vsapi->mapGetData(in, "filename", 0, &err) };
 	if (err)
 		filename = "";
 	else
 		filename = fn;
 
 	std::string mappings;
-	const char* mp{ vsapi->propGetData(in, "mappings", 0, &err) };
+	const char* mp{ vsapi->mapGetData(in, "mappings", 0, &err) };
 	if (err)
 		mappings = "";
 	else
 		mappings = mp;
 
-	bool mismatch{ !!vsapi->propGetInt(in, "mismatch", 0, &err) };
+	bool mismatch{ !!vsapi->mapGetInt(in, "mismatch", 0, &err) };
 	if (err)
 		mismatch = false;
 
 	MismatchCauses mismatchCause = findCommonVi(&d.vi, d.node2, vsapi);
 	if (mismatchCause == MismatchCauses::DIFFERENT_LENGTHS) {
-		vsapi->setError(out, "ReplaceFramesSimple: Clip lengths don't match");
+		vsapi->mapSetError(out, "ReplaceFramesSimple: Clip lengths don't match");
 		vsapi->freeNode(d.node1);
 		vsapi->freeNode(d.node2);
 		return;
@@ -109,11 +104,11 @@ void VS_CC replaceCreate(const VSMap *in, VSMap *out, void *userData, VSCore *co
 
 	if (static_cast<bool>(mismatchCause) && (!mismatch)) {
 		if (mismatchCause == MismatchCauses::DIFFERENT_DIMENSIONS)
-			vsapi->setError(out, "ReplaceFramesSimple: Clip dimensions don't match");
+			vsapi->mapSetError(out, "ReplaceFramesSimple: Clip dimensions don't match");
 		else if (mismatchCause == MismatchCauses::DIFFERENT_FORMATS)
-			vsapi->setError(out, "ReplaceFramesSimple: Clip formats don't match");
+			vsapi->mapSetError(out, "ReplaceFramesSimple: Clip formats don't match");
 		else if (mismatchCause == MismatchCauses::DIFFERENT_FRAMERATES)
-			vsapi->setError(out, "ReplaceFramesSimple: Clip frame rates don't match");
+			vsapi->mapSetError(out, "ReplaceFramesSimple: Clip frame rates don't match");
 		vsapi->freeNode(d.node1);
 		vsapi->freeNode(d.node2);
 		return;
@@ -128,7 +123,7 @@ void VS_CC replaceCreate(const VSMap *in, VSMap *out, void *userData, VSCore *co
 		if (!filename.empty()) {
 			std::ifstream file(filename);
 			if (!file) {
-				vsapi->setError(out, "ReplaceFramesSimple: Failed to open the timecodes file.");
+				vsapi->mapSetError(out, "ReplaceFramesSimple: Failed to open the timecodes file.");
 				vsapi->freeNode(d.node1);
 				vsapi->freeNode(d.node2);
 				return;
@@ -141,12 +136,16 @@ void VS_CC replaceCreate(const VSMap *in, VSMap *out, void *userData, VSCore *co
 		}
 	}
 	catch (const std::exception &ex) {
-		vsapi->setError(out, ex.what());
+		vsapi->mapSetError(out, ex.what());
 		vsapi->freeNode(d.node1);
 		vsapi->freeNode(d.node2);
 		return;
 	}
 
 	ReplaceData *data = new ReplaceData{ d };
-	vsapi->createFilter(in, out, "Replace", replaceInit, replaceGetFrame, replaceFree, fmParallel, 0, data, core);
+
+	//Output frame n is always frame n of exactly one of the two clips, so no
+	//input frame is ever requested twice.
+	VSFilterDependency deps[] = { { data->node1, rpNoFrameReuse }, { data->node2, rpNoFrameReuse } };
+	vsapi->createVideoFilter(out, "ReplaceFramesSimple", &data->vi, replaceGetFrame, replaceFree, fmParallel, deps, 2, data, core);
 }

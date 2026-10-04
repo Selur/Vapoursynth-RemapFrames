@@ -77,8 +77,8 @@ RemapFramesSimple
     remap.RemapFramesSimple(clip clip[, string filename="", string mappings=""]) 
     remap.Remfs(clip clip[, string filename="", string mappings=""])
 Parameters:
-    *baseclip*
-        The name of the text file that specifies the new frame mappings.
+    *clip*
+        The clip whose frames are selected.
     *filename*
         The path/name of the text file that specifies the new frame mappings.
     *mappings*
@@ -96,7 +96,7 @@ RemapFramesSimple takes a text file or a mappings string consisting of a sequenc
      remap.Remfs(clip, mappings="20 20 20 20 20")
      
 ReplaceFramesSimple
-=================
+===================
 **Usage**
 ::
     remap.ReplaceFramesSimple(clip baseclip, clip sourceclip[, string filename="", string mappings="", bint mismatch=False]) 
@@ -133,10 +133,48 @@ ReplaceFramesSimple takes a text file or a mappings string consisting of sequenc
       # Replace frames 30, 40, 50 with their deinterlaced versions.
       clip = core.remap.Rfs(clip, deinterlaced, mappings="30 40 50")
 
-Building from sources
-=====================
-You need `The Meson Build System <http://mesonbuild.com>`_ installed.
+Installation
+============
+
+Prebuilt wheels for Windows x64, Linux x86_64 and macOS arm64 are
+attached to each `GitHub release
+<https://github.com/Selur/Vapoursynth-RemapFrames/releases>`_::
+
+    pip install vapoursynth_remapframes-*.whl
+
+The wheel installs the plugin into the ``vapoursynth/plugins`` directory of
+the VapourSynth PyPI package, from where it is autoloaded. If VapourSynth
+comes from the system instead (distribution package, Homebrew, ...), install
+with ``--no-deps`` and load the plugin from that directory with
+``core.std.LoadPlugin`` or copy it to the plugin autoload directory.
+
+The plugin uses the VapourSynth API 4 (VapourSynth R55 or newer).
+
+
+Testing
+=======
+
+``test/test_remapframes.py`` runs all three filters on synthetic clips and
+checks the frame mappings, the comment handling, the ``mismatch`` behaviour
+and the error cases. It needs the ``vapoursynth`` Python module::
+
+    python3 test/test_remapframes.py build/libremapframes.so
+
+Without an argument the plugin is expected to be autoloaded (e.g. from the
+installed wheel).
+
+
+Compilation
+===========
+
+Meson and Ninja are required. The VapourSynth API 4 headers are
+bundled, a system installation of VapourSynth is optional.
+
 ::
 
-    $ cd /path/to/src/root && mkdir build && cd build && meson --buildtype release .. && ninja  
-    # ninja install
+    meson setup build
+    ninja -C build
+    # ninja -C build install
+
+On macOS the plugin is built as ``libremapframes.dylib``, which is the only
+extension VapourSynth autoloads there.

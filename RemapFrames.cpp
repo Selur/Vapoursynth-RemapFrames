@@ -1,19 +1,14 @@
 #include "Common.h"
 
 struct RemapData {
-	VSNodeRef *node1;
-	VSNodeRef *node2;
+	VSNode *node1;
+	VSNode *node2;
 	VSVideoInfo vi;
 	std::vector<unsigned int> frameMap;
 };
 
-static void VS_CC remapInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-	RemapData *d{ static_cast<RemapData*>(*instanceData) };
-	vsapi->setVideoInfo(&d->vi, 1, node);
-}
-
-static const VSFrameRef *VS_CC remapGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-	RemapData *d{ static_cast<RemapData*>(*instanceData) };
+static const VSFrame *VS_CC remapGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+	RemapData *d{ static_cast<RemapData*>(instanceData) };
 
 	if (activationReason == arInitial) {
 		if (d->frameMap[n] == UINT_MAX)
@@ -89,20 +84,20 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 	if (!file) {
 		skipWhitespace(name, col);
 		//If mappings string is empty.
-		if (col == name.size())
+		if (col == static_cast<int>(name.size()))
 			return;
 	}
 
 	std::string temp;
 	while (file ? std::getline(*static_cast<std::ifstream*>(stream), temp) : std::getline(*static_cast<std::stringstream*>(stream), temp)) {
 		col = 0;
-		while (col < temp.size()) {
+		while (col < static_cast<int>(temp.size())) {
 			skipWhitespace(temp, col);
 			char ch{ getChar(temp, col) };
 			if (ch != 0) {
 				if (ch == '#')
-					continue;
-				else if (std::isdigit(ch) || ch == '-')
+					break;
+				else if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '-')
 					matchIntToInt(temp, col, frameMap, line, file, maxFrames);
 				else if (ch == '[') {
 					++col;
@@ -116,7 +111,7 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 					skipWhitespace(temp, col);
 					ch = getChar(temp, col);
 					if (ch != 0) {
-						if (std::isdigit(ch) || ch == '-') {
+						if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '-') {
 							matchRangeToInt(temp, col, frameMap, rangeIn, line, file, maxFrames);
 						}
 						else if (ch == '[') {
@@ -138,38 +133,38 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 
 void VS_CC remapCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
 	RemapData d;
-	d.node1 = vsapi->propGetNode(in, "baseclip", 0, 0);
+	d.node1 = vsapi->mapGetNode(in, "baseclip", 0, 0);
 	d.vi = *vsapi->getVideoInfo(d.node1);
 	int err;
 
-	//We use a const char* to store the value from propGetData as std::string crashes or has undefined behaviour when fed NULL.
+	//We use a const char* to store the value from mapGetData as std::string crashes or has undefined behaviour when fed NULL.
 	std::string filename;
-	const char* fn{ vsapi->propGetData(in, "filename", 0, &err) };
+	const char* fn{ vsapi->mapGetData(in, "filename", 0, &err) };
 	if (err)
 		filename = "";
 	else
 		filename = fn;
 
 	std::string mappings;
-	const char* mp{ vsapi->propGetData(in, "mappings", 0, &err) };
+	const char* mp{ vsapi->mapGetData(in, "mappings", 0, &err) };
 	if (err)
 		mappings = "";
 	else
 		mappings = mp;
 
 	//If sourceclip is not provided, we set sourceclip equal to baseclip.
-	d.node2 = vsapi->propGetNode(in, "sourceclip", 0, &err);
+	d.node2 = vsapi->mapGetNode(in, "sourceclip", 0, &err);
 	if (err)
 		d.node2 = d.node1;
 
-	bool mismatch{ !!vsapi->propGetInt(in, "mismatch", 0, &err) };
+	bool mismatch{ !!vsapi->mapGetInt(in, "mismatch", 0, &err) };
 	if (err)
 		mismatch = false;
 
 	//We do not accept variable clip lengths regardless of mismatch's value.
 	MismatchCauses mismatchCause = findCommonVi(&d.vi, d.node2, vsapi);
 	if (mismatchCause == MismatchCauses::DIFFERENT_LENGTHS) {
-		vsapi->setError(out, "RemapFrames: Clip lengths don't match");
+		vsapi->mapSetError(out, "RemapFrames: Clip lengths don't match");
 		//Free baseclip.
 		vsapi->freeNode(d.node1);
 		//If sourceclip and baseclip aren't the same, then free sourceclip.
@@ -181,11 +176,11 @@ void VS_CC remapCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core
 
 	if (static_cast<bool>(mismatchCause) && (!mismatch)) {
 		if (mismatchCause == MismatchCauses::DIFFERENT_DIMENSIONS)
-			vsapi->setError(out, "RemapFrames: Clip dimensions don't match");
+			vsapi->mapSetError(out, "RemapFrames: Clip dimensions don't match");
 		else if (mismatchCause == MismatchCauses::DIFFERENT_FORMATS)
-			vsapi->setError(out, "RemapFrames: Clip formats don't match");
+			vsapi->mapSetError(out, "RemapFrames: Clip formats don't match");
 		else if (mismatchCause == MismatchCauses::DIFFERENT_FRAMERATES)
-			vsapi->setError(out, "RemapFrames: Clip frame rates don't match");
+			vsapi->mapSetError(out, "RemapFrames: Clip frame rates don't match");
 		vsapi->freeNode(d.node1);
 		if (d.node1 != d.node2)
 			vsapi->freeNode(d.node2);
@@ -205,7 +200,7 @@ void VS_CC remapCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core
 		if (!filename.empty()) {
 			std::ifstream file(filename);
 			if (!file) {
-				vsapi->setError(out, "RemapFrames: Failed to open the timecodes file.");
+				vsapi->mapSetError(out, "RemapFrames: Failed to open the timecodes file.");
 				vsapi->freeNode(d.node1);
 				if (d.node1 != d.node2)
 					vsapi->freeNode(d.node2);
@@ -219,7 +214,7 @@ void VS_CC remapCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core
 		}
 	}
 	catch (const std::exception &ex) {
-		vsapi->setError(out, ex.what());
+		vsapi->mapSetError(out, ex.what());
 		vsapi->freeNode(d.node1);
 		if (d.node1 != d.node2)
 			vsapi->freeNode(d.node2);
@@ -227,5 +222,16 @@ void VS_CC remapCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core
 	}
 
 	RemapData *data = new RemapData{ d };
-	vsapi->createFilter(in, out, "Remap", remapInit, remapGetFrame, remapFree, fmParallel, 0, data, core);
+
+	//baseclip only ever supplies frame n for output frame n (rpNoFrameReuse), while
+	//any frame of sourceclip may be used any number of times (rpGeneral).
+	//When no sourceclip is given both are the same node reference, which is listed once.
+	VSFilterDependency deps[] = { { data->node1, rpNoFrameReuse }, { data->node2, rpGeneral } };
+	if (data->node1 == data->node2) {
+		deps[0].requestPattern = rpGeneral;
+		vsapi->createVideoFilter(out, "RemapFrames", &data->vi, remapGetFrame, remapFree, fmParallel, deps, 1, data, core);
+	}
+	else {
+		vsapi->createVideoFilter(out, "RemapFrames", &data->vi, remapGetFrame, remapFree, fmParallel, deps, 2, data, core);
+	}
 }
