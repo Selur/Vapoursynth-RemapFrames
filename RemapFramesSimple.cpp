@@ -1,18 +1,13 @@
 #include "Common.h"
 
 struct RemapSimpleData {
-	VSNodeRef *node;
+	VSNode *node;
 	VSVideoInfo vi;
 	std::vector<unsigned int> frameMap;
 };
 
-static void VS_CC remapSimpleInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-	RemapSimpleData *d{ static_cast<RemapSimpleData*>(*instanceData) };
-	vsapi->setVideoInfo(&d->vi, 1, node);
-}
-
-static const VSFrameRef *VS_CC remapSimpleGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-	RemapSimpleData *d{ static_cast<RemapSimpleData*>(*instanceData) };
+static const VSFrame *VS_CC remapSimpleGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+	RemapSimpleData *d{ static_cast<RemapSimpleData*>(instanceData) };
 
 	if (activationReason == arInitial) {
 		vsapi->requestFrameFilter(d->frameMap[n], d->node, frameCtx);
@@ -42,20 +37,20 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 
 	if (!file) {
 		skipWhitespace(name, col);
-		if (col == name.size())
+		if (col == static_cast<int>(name.size()))
 			throw std::runtime_error("RemapFramesSimple: Video length cannot be 0");
 	}
 
 	std::string temp;
 	while (file ? std::getline(*static_cast<std::ifstream*>(stream), temp) : std::getline(*static_cast<std::stringstream*>(stream), temp)) {
 		col = 0;
-		while (col < temp.size()) {
+		while (col < static_cast<int>(temp.size())) {
 			skipWhitespace(temp, col);
 			char ch{ getChar(temp, col) };
 			if (ch != 0) {
 				if (ch == '#')
-					continue;
-				else if (std::isdigit(ch) || ch == '-')
+					break;
+				else if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '-')
 					frameMap.push_back(getInt(temp, col, line, file, maxFrames, Filter::REMAP_FRAMES_SIMPLE));
 				else {
 					std::string location{ file ? " text file " : " mappings " };
@@ -66,35 +61,39 @@ static void parse(std::string name, std::vector<unsigned int> &frameMap, void *s
 		}
 		line++;
 	}
+
+	//API 4 requires a known, positive clip length.
+	if (frameMap.empty())
+		throw std::runtime_error("RemapFramesSimple: Video length cannot be 0");
 }
 
 void VS_CC remapSimpleCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
 	RemapSimpleData d;
-	d.node = vsapi->propGetNode(in, "clip", 0, 0);
+	d.node = vsapi->mapGetNode(in, "clip", 0, 0);
 	d.vi = *vsapi->getVideoInfo(d.node);
 	int err;
 
 	std::string filename;
-	const char* fn{ vsapi->propGetData(in, "filename", 0, &err) };
+	const char* fn{ vsapi->mapGetData(in, "filename", 0, &err) };
 	if (err)
 		filename = "";
 	else
 		filename = fn;
 
 	std::string mappings;
-	const char* mp{ vsapi->propGetData(in, "mappings", 0, &err) };
+	const char* mp{ vsapi->mapGetData(in, "mappings", 0, &err) };
 	if (err)
 		mappings = "";
 	else
 		mappings = mp;
 
 	if (mappings.empty() && filename.empty()) {
-		vsapi->setError(out, "RemapFramesSimple: Both filename and mappings cannot be empty");
+		vsapi->mapSetError(out, "RemapFramesSimple: Both filename and mappings cannot be empty");
 		vsapi->freeNode(d.node);
 		return;
 	}
 	else if (!mappings.empty() && !filename.empty()) {
-		vsapi->setError(out, "RemapFramesSimple: mappings and filename cannot be used together");
+		vsapi->mapSetError(out, "RemapFramesSimple: mappings and filename cannot be used together");
 		vsapi->freeNode(d.node);
 		return;
 	}
@@ -103,7 +102,7 @@ void VS_CC remapSimpleCreate(const VSMap *in, VSMap *out, void *userData, VSCore
 		if (!filename.empty()) {
 			std::ifstream file(filename);
 			if (!file) {
-				vsapi->setError(out, "RemapFramesSimple: Failed to open the timecodes file.");
+				vsapi->mapSetError(out, "RemapFramesSimple: Failed to open the timecodes file.");
 				vsapi->freeNode(d.node);
 				return;
 			}
@@ -115,13 +114,16 @@ void VS_CC remapSimpleCreate(const VSMap *in, VSMap *out, void *userData, VSCore
 		}
 	}
 	catch (const std::exception &ex) {
-		vsapi->setError(out, ex.what());
+		vsapi->mapSetError(out, ex.what());
 		vsapi->freeNode(d.node);
 		return;
 	}
 
-	d.vi.numFrames = d.frameMap.size();
+	d.vi.numFrames = static_cast<int>(d.frameMap.size());
 
 	RemapSimpleData *data = new RemapSimpleData{ d };
-	vsapi->createFilter(in, out, "RemapSimple", remapSimpleInit, remapSimpleGetFrame, remapSimpleFree, fmParallel, 0, data, core);
+
+	//Any input frame may be used any number of times.
+	VSFilterDependency deps[] = { { data->node, rpGeneral } };
+	vsapi->createVideoFilter(out, "RemapFramesSimple", &data->vi, remapSimpleGetFrame, remapSimpleFree, fmParallel, deps, 1, data, core);
 }

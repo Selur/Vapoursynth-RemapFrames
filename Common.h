@@ -1,9 +1,12 @@
 #ifndef COMMON_H
 #define COMMON_H
-#include "VapourSynth.h"
-#include "VSHelper.h"
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
+#include <climits>
+#include <string>
 #include <vector>
 #include <sstream>
+#include <stdexcept>
 #include <cctype>
 #include <fstream>
 
@@ -30,6 +33,6 @@ void skipWhitespace(const std::string &str, int &col);
 int getInt(const std::string &str, int &col, const int &line, const bool &file, int maxFrames, Filter filter);
 char getChar(const std::string &str, const int &col);
 void fillRange(const std::string &str, int &col, Range &range, const int &line, const bool &file, int maxFrames, Filter filter);
-MismatchCauses findCommonVi(VSVideoInfo *outVi, VSNodeRef *node2, const VSAPI *vsapi);
+MismatchCauses findCommonVi(VSVideoInfo *outVi, VSNode *node2, const VSAPI *vsapi);
 
 #endif

@@ -3,7 +3,7 @@
 //Moves col to the next non-whitespace character.
 //If there is no non-whitespace character, col will be equal to the size of the string.
 void skipWhitespace(const std::string &str, int &col) {
-	while (col < str.size() && std::isspace(str[col])) {
+	while (col < static_cast<int>(str.size()) && std::isspace(static_cast<unsigned char>(str[col]))) {
 		++col;
 	}
 }
@@ -14,7 +14,7 @@ int getInt(const std::string &str, int &col, const int &line, const bool &file, 
 	int initial{ col };
 	
 	//We check here for the character '-' to compensate for negative numbers.
-	while (col < str.size() && (std::isdigit(str[col]) || str[col] == '-')) {
+	while (col < static_cast<int>(str.size()) && (std::isdigit(static_cast<unsigned char>(str[col])) || str[col] == '-')) {
 		++col;
 	}
 
@@ -30,13 +30,13 @@ int getInt(const std::string &str, int &col, const int &line, const bool &file, 
 	try {
 		frame = std::stoi(str.substr(initial, col - initial)); //Trim the string to contain the part with a single integer and then convert
 	}
-	catch (std::invalid_argument) {
+	catch (const std::invalid_argument &) {
 		//Catches the error thrown when the string cannot be converted to an int and throws a runtime error (Parse Error).
 		std::string location{ file ? " text file " : " mappings "};
 		std::string error{ filterName + ": Parse Error in" + location + "at line " + std::to_string(line + 1) + ", column " + std::to_string(col + 1) };
 		throw std::runtime_error(error);
 	}
-	catch (std::out_of_range) {
+	catch (const std::out_of_range &) {
 		//Catches overflow exception and throws a runtime error (Overflow Error).
 		std::string location{ file ? " text file " : " mappings " };
 		std::string error{ filterName + ": Overflow Error in" + location + "at line " + std::to_string(line + 1) + ", column " + std::to_string(col + 1) };
@@ -54,7 +54,7 @@ int getInt(const std::string &str, int &col, const int &line, const bool &file, 
 
 //Returns the character in the string at position col. Returns 0 if col is out of bounds.
 char getChar(const std::string &str, const int &col) {
-	if (col < str.size())
+	if (col < static_cast<int>(str.size()))
 		return str[col];
 	return 0;
 }
@@ -80,7 +80,7 @@ void fillRange(const std::string &str, int &col, Range &range, const int &line, 
 	}
 
 	skipWhitespace(str, col);
-	if (col >= str.size() || str[col] != ']') {
+	if (col >= static_cast<int>(str.size()) || str[col] != ']') {
 		std::string location{ file ? " text file " : " mappings " };
 		std::string error{ filterName + ": Parse Error in" + location + "at line " + std::to_string(line + 1) + ", column " + std::to_string(col + 1) };
 		throw std::runtime_error(error);
@@ -88,9 +88,11 @@ void fillRange(const std::string &str, int &col, Range &range, const int &line, 
 	++col;
 }
 
-//Below code copied and modified from "reorderfilters.c" in VS repository.
+//Below code copied and modified from "reorderfilters.cpp" in VS repository.
+//In API 4 variable dimensions are signalled by width/height of 0 and a variable
+//format by a zeroed VSVideoFormat (colorFamily == cfUndefined).
 
-MismatchCauses findCommonVi(VSVideoInfo *outVi, VSNodeRef *node2, const VSAPI *vsapi) {
+MismatchCauses findCommonVi(VSVideoInfo *outVi, VSNode *node2, const VSAPI *vsapi) {
 	MismatchCauses mismatch{ MismatchCauses::NO_MISMATCH };
 	if (node2) {
 		const VSVideoInfo *vi{ vsapi->getVideoInfo(node2) };
@@ -101,8 +103,8 @@ MismatchCauses findCommonVi(VSVideoInfo *outVi, VSNodeRef *node2, const VSAPI *v
 			mismatch = MismatchCauses::DIFFERENT_DIMENSIONS;
 		}
 
-		else if (outVi->format != vi->format) {
-			outVi->format = 0;
+		else if (!vsh::isSameVideoFormat(&outVi->format, &vi->format)) {
+			outVi->format = VSVideoFormat{};
 			mismatch = MismatchCauses::DIFFERENT_FORMATS;
 		}
 
