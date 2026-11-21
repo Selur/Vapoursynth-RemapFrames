@@ -2,7 +2,7 @@ project('RemapFrames', 'cpp',
   default_options : ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++14'],
   meson_version : '>=0.51.0',
   license : 'BSD-2-Clause',
-  version : '1.1'
+  version : '1.1.1'
 )
 
 sources = [
